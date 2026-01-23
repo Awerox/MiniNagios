@@ -414,3 +414,4 @@ Pour cet exercice, comme nous n'avons pas de vrais câbles, nous allons simuler 
 .   Dans `index.php`, créez un Switch "SW-Principal" avec 24 ports.
 .   Appelez la méthode `scannerPorts()` et observez le résultat (rafraîchissez la page pour voir les états changer).
 
+
