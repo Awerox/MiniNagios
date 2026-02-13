@@ -1,0 +1,233 @@
+= SÉANCE 3 : Architecture Modulaire (Composition vs Héritage)
+:author: Timothée Robert et les IA
+:toc: left
+:toc-title: Sommaire
+:icons: font
+:source-highlighter: highlightjs
+:imagesdir: images
+
+==Le Piège de l'Héritage ("L'Enfer des Classes")
+
+Jusqu'ici, nous avons utilisé l'héritage (`extends`) pour spécialiser nos équipements.
+
+* `Serveur` **est un** `EquipementReseau`.
+* `Routeur` **est un** `EquipementReseau`.
+
+C'est très bien pour la base. Mais imaginez maintenant que nous voulions gérer les **Services** installés sur ces serveurs (Apache, MySQL, SSH, FTP...).
+
+=== La Mauvaise Idée (Ce qu'il ne faut PAS faire)
+Si on continue avec l'héritage, on serait tenté de créer :
+
+* Une classe `ServeurWeb` (qui étend Serveur).
+* Une classe `ServeurBaseDeDonnees` (qui étend Serveur).
+
+**Mais que se passe-t-il si un client veut un serveur qui fait À LA FOIS Web et Base de Données ?**
+En PHP, l'héritage multiple est impossible (`class SuperServeur extends ServeurWeb, ServeurSQL` -> ❌ ERREUR).
+
+On finirait avec une structure monstrueuse et ingérable comme celle-ci :
+
+.Diagramme de l'Enfer de l'Héritage
+[mermaid]
+....
+classDiagram
+    Equipement <|-- Serveur
+    Serveur <|-- ServeurWeb
+    Serveur <|-- ServeurSQL
+    Serveur <|-- ServeurFTP
+    Serveur <|-- ServeurWeb_Et_SQL
+    Serveur <|-- ServeurWeb_Et_FTP
+    Serveur <|-- ServeurSQL_Et_FTP
+    Serveur <|-- Serveur_Tout_En_Un
+    note "Explosion combinatoire !\nImpossible à maintenir."
+....
+
+== La Solution : La Composition ("A un" vs "Est un")
+
+Dans le développement professionnel, on suit une règle d'or :
+[QUOTE]
+"Favoriser la Composition (90%) sur l'Héritage (10%)."
+
+L'idée est de changer de mentalité :
+
+* Au lieu de dire : "Ce serveur **EST UN** serveur web".
+* On va dire : "Ce serveur **A UN** service web installé dessus".
+
+C'est comme des **Lego**.
+
+* **Héritage :** Vous sculptez un bloc de bois. Une fois sculpté en voiture, il ne peut pas devenir un avion.
+* **Composition :** Vous avez une plaque de base (Le Serveur). Vous pouvez clipser dessus une brique "Web", une brique "SQL", ou les deux. C'est dynamique.
+
+.Diagramme de Composition (La solution propre)
+[mermaid]
+....
+classDiagram
+    class Serveur {
+        -services: array
+        +ajouterService(Service s)
+    }
+    class Service {
+        -nom: string
+        -port: int
+    }
+
+    Serveur "1" *-- "*" Service : Possède >
+....
+
+Ici, un Serveur "possède" (Composition) une liste de Services.
+
+== Mise en Pratique : La Brique "Service"
+
+Nous allons créer une classe qui représente un logiciel installé (Apache, MySQL, etc.). Cette classe est **indépendante**. Elle ne sait même pas qu'elle est sur un serveur.
+
+=== Création de la classe Service
+Créez le fichier `src/Service.php`.
+
+[source,php]
+----
+<?php
+namespace App;
+
+class Service
+{
+    private string $nom;
+    private int $port;
+    private bool $estDemarre; // État du service (Allumé/Éteint)
+
+    public function __construct(string $nom, int $port)
+    {
+        // Petit rappel de la Séance 2 : Validation !
+        if ($port < 1 || $port > 65535) {
+            throw new \Exception("SERVICE : Le port $port est invalide.");
+        }
+
+        $this->nom = $nom;
+        $this->port = $port;
+        $this->estDemarre = false; // Par défaut, un service est éteint
+    }
+
+    public function demarrer(): void
+    {
+        $this->estDemarre = true;
+    }
+
+    public function arreter(): void
+    {
+        $this->estDemarre = false;
+    }
+
+    public function getStatut(): string
+    {
+        // Retourne un bout de HTML (Rouge ou Vert)
+        $couleur = $this->estDemarre ? "green" : "red";
+        $etat    = $this->estDemarre ? "ON" : "OFF";
+
+        return "<span style='color:$couleur'>[$this->nom : $etat : Port $this->port]</span>";
+    }
+}
+----
+
+== Intégration : Modifier le Serveur
+
+Maintenant, nous devons rendre notre `Serveur` capable d'accueillir ces `Service`s.
+
+=== Modification de `src/Serveur.php`
+Ouvrez votre classe `Serveur` existante et modifiez-la pour ajouter la gestion des services.
+
+[source,php]
+----
+<?php
+namespace App;
+
+class Serveur extends EquipementReseau
+{
+    private string $os;
+
+    // NOUVEAU : Un tableau pour stocker les objets "Service"
+    private array $services = [];
+
+    public function __construct(string $hostname, string $ip, string $os)
+    {
+        parent::__construct($hostname, $ip); // Validation auto du parent
+        $this->os = $os;
+    }
+
+    /**
+     * C'est ici que la COMPOSITION opère.
+     * On injecte un objet "Service" à l'intérieur du Serveur.
+     */
+    public function ajouterService(Service $service): void
+    {
+        // On ajoute l'objet reçu dans notre tableau
+        $this->services[] = $service;
+    }
+
+    public function afficherStatut(): string
+    {
+        // 1. On affiche les infos de base du serveur
+        $html = parent::afficherStatut() . " | OS : $this->os <br>";
+
+        // 2. On boucle sur les services pour afficher leur état
+        if (empty($this->services)) {
+            $html .= "<em>Aucun service installé.</em>";
+        } else {
+            $html .= "<strong>Services : </strong>";
+            foreach ($this->services as $service) {
+                // On délègue l'affichage à la classe Service (Chacun son métier)
+                $html .= $service->getStatut() . " ";
+            }
+        }
+
+        return $html;
+    }
+}
+----
+
+
+
+== Exercices Pratiques
+
+Vous allez assembler les pièces du puzzle.
+
+=== Exercice 1 : Le Déploiement (20 min)
+**Objectif :** Instancier des services et les "clipser" sur des serveurs via la composition.
+
+Dans `public/index.php` (vous pouvez nettoyer le code des séances précédentes) :
+
+1.  Créez un serveur "SRV-WEB-01" (Debian).
+2.  Créez un objet Service "Apache" sur le port 80.
+3.  Créez un objet Service "SSH" sur le port 22.
+4.  **Important :** Démarrez le service Apache (méthode `demarrer()`), mais laissez SSH éteint.
+5.  Utilisez la méthode `ajouterService()` pour installer ces deux services sur le SRV-WEB-01.
+6.  Affichez le statut du serveur.
+* *Attendu :* Vous devriez voir les infos du serveur + "Apache : ON (Vert)" + "SSH : OFF (Rouge)".
+
+=== Exercice 2 : Base de Données (15 min)
+**Objectif :** Prouver la flexibilité.
+
+1.  Créez un deuxième serveur "SRV-DB-01" (Windows).
+2.  Ajoutez-lui un service "MySQL" (Port 3306) et démarrez-le.
+3.  Ajoutez-lui un service "RDP" (Port 3389) éteint.
+4.  Affichez le statut.
+* *Observation :* Nous n'avons pas eu besoin de créer une classe `ServeurWindowsSql`. La composition nous a permis de configurer cela dynamiquement !
+
+=== Exercice 3 : L'Intelligence Collective (30 min / Difficile)
+**Objectif :** Faire communiquer le Contenant (Serveur) et le Contenu (Service).
+
+On veut que le Serveur change d'état global si un de ses services est critique.
+
+1.  Modifiez la classe `Service` :
+* Ajoutez une propriété privée `bool $estCritique` (et mettez-la dans le `__construct`).
+* Ajoutez un "Getter" : `public function estCritique(): bool { return $this->estCritique; }`
+* Ajoutez un "Getter" pour l'état : `public function estDemarre(): bool { return $this->estDemarre; }`
+
+2.  Modifiez la classe `Serveur` :
+* Ajoutez une méthode `verifierSante(): string`.
+* Cette méthode doit parcourir tous les services (`foreach`).
+* **Logique :**
+* Si un service est marqué "Critique" ET qu'il est "Éteint" -> Retournez "DANGER 🔴".
+* Sinon -> Retournez "OK 🟢".
+
+3.  Testez dans `index.php` :
+* Éteignez Apache sur le serveur Web (alors qu'il est critique).
+* Appelez `verifierSante()`. Cela doit afficher DANGER.
+
