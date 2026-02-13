@@ -1,0 +1,310 @@
+= SÉANCE 4 : Fiabilité & Tests Unitaires (Introduction à PHPUnit)
+:author: Timothée Robert et les IA
+:toc: left
+:toc-title: Sommaire
+:icons: font
+:source-highlighter: highlightjs
+:imagesdir: images
+
+== Pourquoi tester ? (Le Syndrome du "F5")
+
+Jusqu'à présent, pour vérifier si votre code fonctionnait :
+
+1. Vous écriviez une classe.
+2. Vous alliez dans `index.php`.
+3. Vous rafraîchissiez votre navigateur (F5).
+4. Vous regardiez si "ça avait l'air bon".
+
+=== Le problème
+Imaginez que vous modifiez la classe `Validator` pour améliorer la regex des IP.
+
+* Êtes-vous sûr que cela n'a pas cassé la validation des Hostnames ?
+* Allez-vous retester manuellement **tous** les cas possibles (IP vide, IP locale, IP avec des lettres...) à chaque modification ?
+
+**La réponse est non.** Et c'est là que les bugs apparaissent en production.
+
+=== La solution : Les Tests Unitaires
+Un test unitaire est un petit bout de code qui :
+
+1. Instancie une de vos classes.
+2. Exécute une méthode.
+3. Compare le résultat obtenu avec le résultat attendu (**Assertion**).
+
+Si le résultat est différent : **C'est Rouge (Échec)**.
+Si c'est identique : **C'est Vert (Succès)**.
+
+.Le Cycle TDD (Test Driven Development)
+[mermaid]
+....
+graph LR
+    A((Rouge)) -->|J'écris le code| B((Vert))
+    B -->|J'améliore| C((Refactoring))
+    C -->|Je vérifie| B
+    style A fill:#f00,stroke:#333,stroke-width:2px,color:white
+    style B fill:#0f0,stroke:#333,stroke-width:2px
+    style C fill:#00f,stroke:#333,stroke-width:2px,color:white
+....
+
+== Installation de l'environnement de Test
+
+Nous allons utiliser **PHPUnit**, le standard industriel pour tester en PHP.
+
+=== Installation via Composer
+Ouvrez votre terminal à la racine du projet `MiniNagios` et lancez :
+
+[source,bash]
+----
+composer require --dev phpunit/phpunit
+----
+
+[NOTE]
+====
+**Pourquoi `--dev` ?**
+Les outils de tests ne servent que pendant le développement. Ils ne doivent pas être installés sur le serveur de production du client. Composer sépare les deux environnements.
+====
+
+=== Configuration de PHPUnit
+Créez un fichier nommé `phpunit.xml` à la racine du projet. C'est le fichier qui explique à PHPUnit comment travailler.
+
+[source,xml]
+----
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="vendor/autoload.php" colors="true">
+    <testsuites>
+        <testsuite name="MiniNagios Test Suite">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>
+----
+
+=== Préparation du dossier
+1. Créez un dossier `tests` à la racine du projet (au même niveau que `src` et `public`).
+2. Nous allons dire à Composer où trouver nos classes de test. Ouvrez `composer.json` et ajoutez la section `autoload-dev` :
+
+[source,json]
+----
+{
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    }
+}
+----
+*(Attention à la virgule après le premier bloc autoload !)*
+
+3. Mettez à jour l'autoloader :
+[source,bash]
+----
+composer dump-autoload
+----
+
+== Notre Premier Test : Le Validator
+
+La classe `Validator` (Séance 2) est parfaite pour commencer car elle est **statique** et pure (pas d'état interne).
+
+=== Écriture du Test
+Créez le fichier `tests/ValidatorTest.php`.
+
+[source,php]
+----
+<?php
+namespace Tests;
+
+use PHPUnit\Framework\TestCase;
+use App\Validator;
+
+class ValidatorTest extends TestCase
+{
+    // Un test doit toujours commencer par le mot "test"
+    public function testIpValide()
+    {
+        // Scénario : Je donne une IP correcte
+        $resultat = Validator::isIpValid("192.168.1.1");
+
+        // Assertion : Je m'attends à ce que ce soit VRAI (True)
+        $this->assertTrue($resultat, "192.168.1.1 devrait être valide");
+    }
+
+    public function testIpInvalide()
+    {
+        // Scénario : Je donne n'importe quoi
+        $resultat = Validator::isIpValid("Patate");
+
+        // Assertion : Je m'attends à ce que ce soit FAUX (False)
+        $this->assertFalse($resultat, "Patate ne devrait pas être une IP valide");
+    }
+
+    public function testIpVide()
+    {
+        $this->assertFalse(Validator::isIpValid(""), "Une IP vide doit échouer");
+    }
+}
+----
+
+=== Lancement des Tests
+Dans votre terminal, lancez la commande magique :
+
+[source,bash]
+----
+./vendor/bin/phpunit
+----
+
+**Résultat attendu :**
+Vous devriez voir une barre verte (ou des points `.`) et le message : `OK (3 tests, 3 assertions)`.
+
+[TIP]
+.Ça ne marche pas ?
+====
+Si vous avez une erreur rouge, lisez le message ! Souvent, c'est une erreur de namespace ou de nom de fichier. Assurez-vous d'avoir fait le `composer dump-autoload`.
+====
+
+== Tester la Logique Objet : Les Services
+
+Maintenant, testons quelque chose de plus complexe : la classe `Service` (Séance 3). Ici, nous allons tester l'état de l'objet (State Testing).
+
+=== Création de `tests/ServiceTest.php`
+
+[source,php]
+----
+<?php
+namespace Tests;
+
+use PHPUnit\Framework\TestCase;
+use App\Service;
+
+class ServiceTest extends TestCase
+{
+    public function testCreationService()
+    {
+        // 1. Arrange (Préparation)
+        $service = new Service("Apache", 80);
+
+        // 2. Act (Action) & 3. Assert (Vérification)
+        // Vérifions que le service est éteint par défaut
+        $this->assertFalse($service->estDemarre());
+    }
+
+    public function testDemarrageEtArret()
+    {
+        $service = new Service("MySQL", 3306);
+
+        // On démarre
+        $service->demarrer();
+        $this->assertTrue($service->estDemarre(), "Le service devrait être démarré");
+
+        // On arrête
+        $service->arreter();
+        $this->assertFalse($service->estDemarre(), "Le service devrait être arrêté");
+    }
+
+    public function testPortInvalideLanceException()
+    {
+        // Ici, on teste que notre code PLANTE correctement quand on l'attaque
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage("invalide");
+
+        // Cette ligne doit provoquer l'exception
+        new Service("BadService", 999999);
+    }
+}
+----
+
+Lancez à nouveau `./vendor/bin/phpunit`. Vous devriez avoir 6 tests validés !
+
+== Le Challenge TDD (Test Driven Development)
+
+Pour cet exercice, nous allons inverser les rôles.
+**Nous avons une nouvelle demande client, mais nous allons d'abord écrire le test avant d'écrire le code.**
+
+**Demande :** Nous voulons pouvoir mettre un `Serveur` en "Mode Maintenance".
+
+* Par défaut, un serveur n'est PAS en maintenance.
+* Si on appelle `activerMaintenance()`, il passe en maintenance.
+* Si un serveur est en maintenance, `afficherStatut()` doit commencer par "🚧 [MAINTENANCE] 🚧".
+
+=== Étape 1 : Le Test (Qui va échouer)
+Créez `tests/ServeurTest.php`.
+
+[source,php]
+----
+<?php
+namespace Tests;
+
+use PHPUnit\Framework\TestCase;
+use App\Serveur;
+
+class ServeurTest extends TestCase
+{
+    public function testModeMaintenance()
+    {
+        $srv = new Serveur("Test-Srv", "10.0.0.1", "Linux");
+
+        // 1. Vérif par défaut
+        $this->assertFalse($srv->enMaintenance());
+
+        // 2. On active
+        $srv->activerMaintenance();
+        $this->assertTrue($srv->enMaintenance());
+
+        // 3. On vérifie l'affichage
+        // La fonction str_contains vérifie si le texte contient la balise
+        $this->assertStringContainsString("🚧", $srv->afficherStatut());
+    }
+}
+----
+
+Lancez `phpunit`. **CRASH !** 🛑
+`Error: Call to undefined method App\Serveur::enMaintenance()`.
+C'est normal, la méthode n'existe pas.
+
+=== Étape 2 : Le Code (Qui va faire passer le test)
+À vous de jouer ! Modifiez `src/Serveur.php` pour que le test passe au vert.
+
+1. Ajoutez une propriété `private bool $maintenance = false;`.
+2. Créez la méthode `enMaintenance(): bool`.
+3. Créez la méthode `activerMaintenance(): void`.
+4. Modifiez `afficherStatut()` pour ajouter le petit logo chantier si nécessaire.
+
+Relancez `phpunit` jusqu'à voir la barre **VERTE**.
+
+== Exercices Pratiques (TP)
+
+À vous d'écrire les tests pour sécuriser le reste de l'application.
+
+=== Exercice 1 : Tester le Validator de Hostname (15 min)
+Dans `ValidatorTest.php`, ajoutez une méthode `testHostnameValide()`.
+Elle doit vérifier que :
+
+* "SRV-WEB-01" est **vrai**.
+* "srv-web" est **vrai**.
+* "SRV WEB" (espace) est **faux**.
+* "SRV_WEB" (underscore) est **faux** (selon votre regex de la séance 2).
+
+=== Exercice 2 : Tester la Composition (20 min)
+Dans `ServeurTest.php`, écrivez un test `testAjoutService()`.
+Scénario :
+
+1. Créer un Serveur.
+2. Créer un Service.
+3. Ajouter le service au serveur.
+4. *Astuce :* Pour vérifier que ça a marché, vous devrez peut-être ajouter une méthode `getNbServices()` dans la classe Serveur (temporairement ou définitivement) et faire un `$this->assertEquals(1, $srv->getNbServices())`.
+
+=== Exercice 3 : Tester la Criticité (20 min)
+Reprenez la logique de l'exercice "Intelligence Collective" de la Séance 3 (Service Critique + Éteint = DANGER).
+Écrivez un test `testAlerteRougeSiServiceCritiqueEteint()` :
+
+1. Créez un Serveur.
+2. Créez un Service critique (`true`) mais ne le démarrez pas.
+3. Ajoutez-le au serveur.
+4. Vérifiez que `verifierSante()` retourne bien une chaîne contenant "DANGER".
+

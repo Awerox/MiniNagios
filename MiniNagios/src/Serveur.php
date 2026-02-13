@@ -1,24 +1,50 @@
 <?php
 namespace App;
 
-// "extends" signifie que Serveur hérite de tout ce que possède EquipementReseau
 class Serveur extends EquipementReseau
 {
-    private string $os; // Attribut spécifique au Serveur
+    private string $os;
 
+    // NOUVEAU : Un tableau pour stocker les objets "Service"
+    private array $services = [];
     public function __construct(string $hostname, string $ip, string $os)
     {
-        // On appelle d'abord le constructeur du parent pour gérer IP et Hostname
-        parent::__construct($hostname, $ip);
 
-        // Puis on gère la spécificité du Serveur
-        $this->os = $os;
+
+        parent::__construct($hostname, $ip); //
+        if (!Validator::isOsSupported($os)) {
+            // Si l'IP est pourrie, on lance une Exception (une erreur fatale contrôlée)
+            throw new \Exception("ERREUR DE CONFIGURATION OS : L'os '$os' n'est pas valide !");
+        }
+        $this->os = $os; //
     }
 
-    // On surcharge (réécrit) la méthode d'affichage pour ajouter l'OS
+    /**
+     * C'est ici que la COMPOSITION opère.
+     * On injecte un objet "Service" à l'intérieur du Serveur.
+     */
+    public function ajouterService(Service $service): void
+    {
+        // On ajoute l'objet reçu dans notre tableau
+        $this->services[] = $service;
+    }
+
     public function afficherStatut(): string
     {
-        // On récupère le texte du parent et on ajoute l'OS
-        return parent::afficherStatut() . " | OS : $this->os";
+        // 1. On affiche les infos de base du serveur
+        $html = parent::afficherStatut() . " | OS : $this->os <br>";
+
+        // 2. On boucle sur les services pour afficher leur état
+        if (empty($this->services)) {
+            $html .= "<em>Aucun service installé.</em>";
+        } else {
+            $html .= "<strong>Services : </strong>";
+            foreach ($this->services as $service) {
+                // On délègue l'affichage à la classe Service (Chacun son métier)
+                $html .= $service->getStatut() . " ";
+            }
+        }
+
+        return $html;
     }
 }

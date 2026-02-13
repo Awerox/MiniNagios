@@ -4,7 +4,7 @@ class Voiture {
     public $couleur; // Attribut (Caractéristique)
 
     public function klaxonner() { // Méthode (Action)
-        echo "Tut tut ! Je suis une voiture " . $this->couleur . "<br>";
+        echo "Tut tut ! Je suis une voiture " . $this->couleur . "<br>\n";
     }
 }
 
