@@ -16,9 +16,9 @@ $monRouteur    = new Routeur("RTR-CORE", "10.0.0.1", 24);
 
 
 $imprimpeHP = new Imprimante("Laser",false,"192.168.1.23","HP-Etage-1" );
-$imprimeCanon = new Imprimante("Jet d'encre",true, "192.168.1.24" , "Canon-Direction") ;
+$imprimeCanon = new Imprimante("Jet d’encre",true, "192.168.1.24" , "Canon-Direction") ;
 
-$monSwitch = new SwitchReseau("SW-Principal", "10.0.210.6", 24) ;
+$monSwitch = new SwitchReseau("SW-Principal", "10.0.210.6", 24, 1) ;
 
 // 4. Utilisation des objets
 echo "<h1>Tableau de bord Mini-Nagios</h1>";

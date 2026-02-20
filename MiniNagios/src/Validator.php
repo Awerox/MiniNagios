@@ -43,7 +43,7 @@ public static function isPrinterTypeValid(string $type): bool{
 }
 
     public static function isOsSupported(string $os): bool {
-        $listeOS=["Debian 12","Debian", "Ubuntu 24.04", "Windows Server 2022", "RedHat 9"];
+        $listeOS=["Debian 12","Debian", "Ubuntu 24.04", "Windows","Windows Server 2022", "RedHat 9"];
         return in_array($os,$listeOS);
 }
 }
