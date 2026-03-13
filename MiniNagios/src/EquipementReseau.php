@@ -41,4 +41,7 @@ class EquipementReseau
     {
         return "Équipement : $this->hostname ($this->ip)";
     }
+
+    public function getHostname(): string { return $this->hostname; }
+    public function getIp(): string { return $this->ip; }
 }

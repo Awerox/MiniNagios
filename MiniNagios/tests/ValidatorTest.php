@@ -29,6 +29,4 @@ class ValidatorTest extends TestCase
     {
         $this->assertFalse(Validator::isIpValid(""), "Une IP vide doit échouer");
     }
-
-
 }

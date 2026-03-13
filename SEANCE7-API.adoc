@@ -1,0 +1,144 @@
+= SÉANCE 7 : Ouverture du SI (API REST & JSON)
+:author: Timothée Robert et les IA
+:toc: left
+:toc-title: Sommaire
+:icons: font
+:source-highlighter: highlightjs
+:imagesdir: images
+
+== Pourquoi créer une API ?
+
+Jusqu'à présent, Mini-Nagios est une application web traditionnelle : le serveur PHP interroge la base de données et fabrique du code HTML que le navigateur affiche.
+
+Mais que se passe-t-il si l'entreprise veut :
+
+* Créer une application mobile (iOS/Android) pour les techniciens réseau ?
+* Connecter un tableau de bord global en JavaScript (Vue.js, React) ?
+* Permettre à un script Python externe de lire l'état de nos serveurs ?
+
+Ces outils ne comprennent pas le HTML. Ils veulent de la **donnée pure**.
+C'est ici qu'intervient l'**API REST** (Application Programming Interface). Notre code PHP va arrêter de renvoyer du design (HTML/CSS) pour renvoyer uniquement des données au format **JSON**.
+
+== Les fondations d'une API REST
+
+=== Le format JSON
+Le JSON (JavaScript Object Notation) est le standard mondial pour l'échange de données. C'est un format texte, léger et compréhensible par tous les langages de programmation.
+
+*Exemple de JSON :*
+[source,json]
+----
+{
+    "serveur": "SRV-WEB-01",
+    "ip": "192.168.1.10",
+    "ports_ouverts": [80, 443]
+}
+----
+
+En PHP, la transformation d'un tableau ou d'un objet en JSON se fait en une seule ligne grâce à la fonction native : `json_encode($donnees)`.
+
+=== Les Verbes HTTP et le CRUD
+Une API REST utilise intelligemment les verbes du protocole HTTP pour définir l'action à réaliser sur une ressource :
+
+* **GET** : Lire (Read)
+* **POST** : Créer (Create)
+* **PUT / PATCH** : Mettre à jour (Update)
+* **DELETE** : Supprimer (Delete)
+
+=== 2.3. Les Codes de Statut (HTTP Status Codes)
+Quand on crée une API, on ne renvoie pas d'erreurs avec `echo "Erreur"`. On utilise les codes officiels du protocole HTTP :
+
+* **200 OK** : Tout s'est bien passé.
+* **201 Created** : La ressource a été créée avec succès.
+* **400 Bad Request** : Les données envoyées par le client sont invalides (ex: IP fausse).
+* **401 Unauthorized** : Le client n'est pas identifié (Pas de clé API).
+* **404 Not Found** : La ressource demandée n'existe pas.
+* **500 Internal Server Error** : Le serveur PHP ou la base de données a planté.
+
+== Cybersécurité : Sécuriser une API (Stateless)
+
+[IMPORTANT]
+.Règle de sécurité
+====
+Une API REST est "Stateless" (Sans état). Elle ne gère pas les cookies et ne peut pas utiliser `$_SESSION`. Chaque requête vers l'API est totalement indépendante et doit prouver son identité.
+====
+
+
+Puisque nous ne pouvons pas utiliser la session de la Séance 6, nous utiliserons plus tard un **Token** ou une **Clé API** (API Key). Le client devra glisser une clé secrète dans les en-têtes (Headers) de sa requête HTTP.
+
+Le client (ex: Postman ou une appli mobile) devra glisser une clé secrète dans les en-têtes (Headers) de sa requête HTTP.
+
+== Prise en main : Notre première API "Hello World" (Guidé)
+
+Avant de connecter la base de données ou de bloquer les accès, voyons comment faire parler PHP en JSON. Nous allons créer un simple point d'accès "Ping" pour vérifier si notre API est en vie.
+
+1. Créez un dossier `api/` à l'intérieur de votre dossier `public/`.
+2. Créez un fichier `public/api/ping.php`.
+3. Écrivez ce code :
+
+[source,php]
+----
+<?php
+// 1. L'en-tête (Header) : On prévient le client qu'il va recevoir du JSON, pas du HTML
+header("Content-Type: application/json; charset=UTF-8");
+
+// 2. On prépare nos données sous forme de tableau associatif PHP
+$reponse = [
+    "statut" => "OK",
+    "message" => "Le moteur Mini-Nagios est en ligne et fonctionnel.",
+    "version" => "1.0.0",
+    "heure_serveur" => date("H:i:s")
+];
+// 3. La conversion (Magie) : On transforme le tableau PHP en chaîne JSON
+echo json_encode($reponse);
+----
+
+== Exercices Pratiques (TP)
+
+Maintenant que vous avez compris le principe, votre mission est d'ouvrir les vraies données de Mini-Nagios au monde extérieur en créant un "Endpoint" (un point d'accès) d'API, tout en le protégeant des intrus.
+
+=== Exercice 1 : Le point d'accès public (Endpoint GET)
+Nous allons créer une page qui renvoie la liste de tous nos serveurs en format JSON.
+
+1. Dans le dossier `public/api/`, créez le fichier `serveurs.php`.
+2. N'oubliez pas l'en-tête `header("Content-Type: application/json; charset=UTF-8");`.
+3. Connectez-vous à la base de données et utilisez votre `ServeurRepository` pour récupérer tous les serveurs (méthode `listerTous()`).
+4. Transformez le résultat renvoyé par le repository en JSON avec `json_encode()` et affichez-le.
+5. Testez votre API dans le navigateur. Vous devriez voir l'intégralité de votre parc informatique en JSON !
+
+=== Exercice 2 : Le Gardien de l'API (Middleware de Clé API)
+Actuellement, votre API est publique. N'importe qui peut aspirer l'architecture de votre réseau. Verrouillons la porte.
+
+1. Dans votre classe `src/Securite.php` (créée à la séance 6), ajoutez une nouvelle méthode statique : `public static function verifierCleApi(): void`.
+2. Le principe de la méthode :
+* L'entreprise a défini une clé secrète (ex: define('API_KEY_SECRETE', 'BtsSlamApi2026');).
+* Vérifiez si le client a envoyé un en-tête nommé `X-API-KEY`. En PHP, on récupère les en-têtes personnalisés via `$_SERVER['HTTP_X_API_KEY']`.
+* Si la clé est absente ou fausse, modifiez le code de statut HTTP (`http_response_code(401);`), affichez un JSON d'erreur `{"erreur": "Accès refusé, clé API invalide"}`, et bloquez l'exécution avec `exit()`.
+3. Allez dans `public/api/serveurs.php` et appelez cette méthode tout en haut.
+4. Testez dans votre navigateur : L'accès doit vous être **refusé** (Code 401).
+
+=== Exercice 3 : Devenir le Client (Consommer l'API)
+Votre navigateur web bloque car il ne sait pas envoyer l'en-tête `X-API-KEY`. Nous allons écrire un petit script client en JavaScript pour interroger notre propre API.
+
+1. Créez un fichier `public/client_api.html`.
+2. Écrivez un squelette HTML basique avec un bouton `<button id="btnLoad">Charger les serveurs via API</button>` et une `<ul id="listeServeurs"></ul>`.
+3. Ajoutez une balise `<script>`.
+4. Écrivez un événement au clic sur le bouton qui utilise la fonction JavaScript `fetch()`.
+5. **Indice pour le fetch :**
++
+[source,javascript]
+----
+fetch('/api/serveurs.php', {
+    method: 'GET',
+    headers: {
+        'X-API-KEY': 'BtsSlamApi2026' // La fameuse clé !
+    }
+})
+.then(response => response.json())
+.then(data => {
+    // Boucler sur 'data' pour créer des balises <li> et les injecter dans la page
+    console.log(data);
+})
+.catch(error => console.error("Erreur de connexion API", error));
+----
++
+6. Cliquez sur le bouton : Les données doivent s'afficher sur votre page dynamiquement, sans aucun rechargement de page. C'est la magie des API et du JavaScript !

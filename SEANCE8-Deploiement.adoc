@@ -1,0 +1,175 @@
+= SÉANCE 8 : Déploiement et Sécurisation en Production
+:author: Timothée Robert
+:toc: left
+:toc-title: Sommaire
+:icons: font
+:source-highlighter: highlightjs
+:imagesdir: images
+
+== Le mythe du "Localhost"
+
+Félicitations ! Votre application Mini-Nagios est fonctionnelle. Mais pour l'instant, elle ne tourne que sur votre machine (`localhost`). Le but de notre métier est de livrer ce logiciel au client final sur un vrai serveur distant. C'est la phase de **Déploiement**.
+
+Le passage en production ("Mise en Prod") n'est pas un simple copier-coller. Il implique des règles de cybersécurité strictes.
+
+== Cybersécurité : Le problème des secrets en dur
+
+Dans l'OWASP, la faille **A04:2025 : Cryptographic Failures** qui était même en 2ème position critique en 2021, **A02:2021 (Cryptographic Failures / Sensitive Data Exposure)** nous met en garde contre la fuite d'informations sensibles.
+Ouvrez votre fichier `src/Database.php`. Vous y verrez probablement ceci :
+[source,php]
+----
+$user = 'root';
+$pass = 'BtsSlam2026!'; // 🚨 DANGER CRITIQUE 🚨
+----
+
+Si vous envoyez ce code tel quel sur Internet (ou sur un dépôt Git partagé), n'importe qui ayant accès aux fichiers pourra lire le mot de passe de votre base de données.
+
+=== La solution : Les Variables d'Environnement (.env)
+La méthodologie standard de l'industrie (*12-Factor App*) impose de **séparer strictement le code et la configuration**.
+Les identifiants doivent être stockés dans un fichier externe nommé `.env`. Ce fichier ne doit **jamais** être transféré avec le code source public.
+Ainsi, votre PC local aura son propre fichier `.env` (avec `root`), et le serveur de production aura le sien (avec les vrais identifiants sécurisés).
+
+== Préparation du code (Refactoring)
+
+Avant d'aller sur Internet, nous devons adapter notre code pour qu'il lise ces fameuses variables.
+
+=== Étape 1 : Installer DotEnv
+PHP ne lit pas les fichiers `.env` nativement. Nous allons utiliser Composer.
+Ouvrez votre terminal à la racine du projet et tapez :
+[source,bash]
+----
+composer require vlucas/phpdotenv
+----
+
+=== Étape 2 : Le fichier d'environnement et le Gitignore
+1. À la racine du projet, créez un fichier nommé `.env` (n'oubliez pas le point !).
+[source,env]
+----
+DB_HOST=127.0.0.1
+DB_NAME=mininagios
+DB_USER=root
+DB_PASS=
+API_SECRET_KEY=BtsSlamApi2026
+----
+2. Créez un fichier `.gitignore` à la racine pour protéger vos secrets si vous utilisez Git :
+[source,text]
+----
+/vendor/
+.env
+----
+
+=== Étape 3 : Le fichier "Bootstrap" (L'amorceur)
+Plutôt que de copier-coller l'appel à Composer et à DotEnv dans toutes nos pages, nous allons centraliser cela.
+Créez un fichier `config/bootstrap.php` :
+
+[source,php]
+----
+<?php
+// On charge l'autoloader une seule fois ici
+require_once __DIR__ . '/../vendor/autoload.php';
+
+// On utilise DotEnv pour charger les variables en local
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
+
+// IMPORTANT : On utilise safeLoad() et non load().
+// Ainsi, si le fichier .env n'existe pas (ex: en production), le script ne plantera pas !
+$dotenv->safeLoad();
+----
+[WARNING]
+.Modification exhaustive des fichiers publics (Chemins relatifs)
+====
+Pour que votre application puisse se connecter à la base de données et vérifier les clés de sécurité, ce nouvel amorceur `bootstrap.php` doit être inclus dans **absolument tous** les points d'entrée de votre application (les pages web et les cibles de formulaires).
+
+**1. Dans le dossier `public/` :**
+Ouvrez les fichiers suivants, supprimez la ligne `require '../vendor/autoload.php';` et remplacez-la par `require '../config/bootstrap.php';` :
+
+* `dashboard.php`
+* `ajouter_machine.php`
+* `ajouter_routeur.php`
+* `traitement.php`
+* `traitement_routeur.php`
+* `supprimer.php`
+* `login.php`
+* `traitement_login.php`
+
+**2. ⚠️ ATTENTION AU SOUS-DOSSIER API !**
+Les fichiers de votre API sont situés un cran plus loin dans l'arborescence (`public/api/`). Il faut donc remonter de **deux** dossiers (`../../`).
+Dans ces fichiers, utilisez `require '../../config/bootstrap.php';` :
+* `api/serveurs.php`
+* `api/ping.php`
+
+*(Règle d'or : On ne fait JAMAIS de `require` dans les classes du dossier `src/` ni dans les `tests/`. L'autoloader s'en charge tout seul !)*
+====
+
+=== Étape 4 : Utiliser les variables
+Modifiez `src/Database.php` pour lire l'environnement :
+[source,php]
+----
+$host = $_ENV['DB_HOST'];
+$dbname = $_ENV['DB_NAME'];
+$user = $_ENV['DB_USER'];
+$pass = $_ENV['DB_PASS'];
+----
+
+== 4. Le Déploiement sur AlwaysData (TP)
+
+Votre code est propre et sécurisé. Il est temps de l'envoyer sur un vrai serveur. Nous allons utiliser **AlwaysData**, un hébergeur français parfait pour les développeurs.
+
+=== Phase 1 : Exporter la base locale
+1. Ouvrez HeidiSQL (ou phpMyAdmin) sur votre PC.
+2. Faites un clic droit sur la base `mininagios` -> **Exporter la base de données en SQL**.
+3. Cochez "Créer" pour les tables et "Insérer" pour les données. Sauvegardez le fichier `export.sql`.
+
+=== Phase 2 : Créer l'infrastructure
+1. Allez sur le site `alwaysdata.com` et créez un compte gratuit. Vous obtiendrez une adresse du type `votrenom.alwaysdata.net`.
+2. Connectez-vous au panneau d'administration.
+3. Allez dans **Environnement -> PHP** et vérifiez que la version par défaut est au moins PHP 8.1.
+4. Allez dans **Bases de données -> MySQL** et créez une nouvelle base. Notez précieusement le **Serveur (Host)**, le **Nom de la base**, l'**Utilisateur** et le **Mot de passe** que vous allez choisir.
+
+image::BDDNom.png[Nom de la BDD]
+
+image::Utilisateurs.png[Utilisateurs et permisisons]
+
+
+5. Toujours dans AlwaysData, ouvrez leur outil "phpMyAdmin" et importez votre fichier `export.sql`.
+
+image::alwaysdata.png[Texte alternatif]
+
+=== Phase 3 : Le Transfert (FTP)
+1. Ouvrez **FileZilla** sur votre PC.
+2. Connectez-vous avec les accès FTP spécifiés dans AlwaysData (visibles dans Accès distant -> FTP).
+
+image::FTP.png[FTP]
+
+3. Dans la fenêtre de droite (le serveur), allez dans le dossier `www/`. Supprimez le fichier `index.html` qui s'y trouve par défaut.
+4. **ATTENTION :** Glissez tout le contenu de votre projet Mini-Nagios vers le serveur **SAUF** le dossier `/vendor/` et le fichier `.env`.
+
+=== Phase 4 : La magie du SSH et de Composer
+Pourquoi n'a-t-on pas transféré le dossier `vendor/` ? Parce qu'il est lourd et peut contenir des fichiers incompatibles entre Windows (votre PC) et Linux (le serveur). C'est le serveur qui doit le construire !
+
+1. Sur le panneau AlwaysData, allez dans **Accès distant -> SSH** et cliquez sur l'icône de terminal web (ou utilisez PuTTY avec vos identifiants).
+2. Dans la console noire, tapez : `cd www/` (pour entrer dans votre dossier web).
+3. Tapez la commande de construction : `composer install --no-dev --optimize-autoloader`.
+*(L'option `--no-dev` indique de ne pas installer PHPUnit en production).*
+
+=== Phase 5 : Les Variables d'Environnement (Sécurité Maximale)
+Votre code est là, les dépendances aussi, mais le site va planter car il n'a pas accès à la base de données (nous n'avons pas transféré le fichier `.env` local).
+
+Pour contrer la faille **A04:2025 de l'OWASP**, nous n'allons pas créer de fichier sur le serveur. Nous allons injecter les mots de passe directement dans la mémoire du serveur via l'interface d'AlwaysData !
+
+1. Sur le panneau d'administration AlwaysData, allez dans le menu **Environnement -> Variables d'environnement**.
+2. Dans le grand bloc de texte fourni, vous pouvez coller vos 5 variables d'un seul coup ! Adaptez les valeurs avec vos vrais identifiants :
+
+[source,env]
+----
+DB_HOST=mysql-votrenom.alwaysdata.net
+DB_NAME=votrenom_mininagios
+DB_USER=votrenom_admin
+DB_PASS=VotreMotDePasseSuperSecret
+API_SECRET_KEY=BtsSlamApi2026
+----
+
+3. Cliquez sur **Enregistrer**.
+4. Allez ensuite dans **Web -> Sites**. Cliquez sur la petite icône de **Redémarrage** (la flèche circulaire) à côté de votre site pour forcer le serveur à lire ces nouvelles variables en mémoire.
+
+**Félicitations !** Tapez l'URL `https://votrenom.alwaysdata.net/public/dashboard.php` dans votre navigateur. Votre application est en ligne, sécurisée selon les standards de l'industrie, et accessible depuis n'importe où dans le monde !

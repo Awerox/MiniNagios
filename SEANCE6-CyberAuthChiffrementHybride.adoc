@@ -1,0 +1,160 @@
+= SÉANCE 6 : Cybersécurité, Authentification et Chiffrement Hybride
+:author: Timothée Robert et les IA
+:toc: left
+:toc-title: Sommaire
+:icons: font
+:source-highlighter: highlightjs
+:imagesdir: images
+
+== Introduction : L'OWASP et le projet Mini-Nagios
+
+Jusqu'à présent, notre application Mini-Nagios est une passoire. N'importe qui connaissant l'URL `dashboard.php` peut consulter notre infrastructure et pire, supprimer des serveurs.
+Dans le top 10 de l'**OWASP** (Open Worldwide Application Security Project), on retrouve régulièrement :
+
+* Les failles d'injection (traitées à la Séance 5 avec PDO, A05:2025).
+* **Les failles d'authentification et de gestion de session (A07:2021 et A01:2025).**
+
+Aujourd'hui, nous allons sécuriser notre application en intégrant des concepts vus au 1er semestre (Hachage, Chiffrement Hybride) dans notre architecture Orientée Objet (MVC).
+
+== Authentification et Sessions (Rappels)
+
+Le protocole HTTP est "stateless" (sans état). Il n'a aucune mémoire. Pour qu'un utilisateur reste connecté d'une page à l'autre, PHP utilise les **Sessions** (`$_SESSION`).
+
+=== Le Hachage (Ne JAMAIS stocker en clair)
+Pour authentifier un administrateur, nous devons comparer son mot de passe avec celui en base de données.
+
+**Règle d'or :** Un mot de passe en BDD doit toujours être haché (empreinte irréversible) avec un algorithme robuste et un "sel" (salt) aléatoire. Fuyez `MD5` ou `SHA1`, utilisez `BCRYPT` ou mieux, `ARGON2ID`.
+
+[source,php]
+----
+// Pour créer un administrateur en base (à faire une seule fois) :
+$hash = password_hash("MonMotDePasseSuperSecret", PASSWORD_BCRYPT);
+
+// Pour vérifier lors du login :
+if (password_verify($motDePasseSaisi, $hashEnBase)) {
+    // OK : On ouvre la session
+    session_start();
+    $_SESSION['admin_connecte'] = true;
+}
+----
+
+== Le Chiffrement Hybride en POO (Service Métier)
+
+Dans Mini-Nagios, nous voulons maintenant stocker le **Mot de Passe Root** de chaque serveur pour que l'application puisse s'y connecter plus tard.
+
+* Peut-on le hacher ? **NON.** Le hachage est irréversible, l'application ne pourrait plus lire le mot de passe pour s'en servir.
+* Peut-on le chiffrer en symétrique (AES) ? **DANGEREUX.** Si la clé AES (qui est sur le code source) fuite, tous les mots de passe sont compromis.
+
+
+
+**La Solution : Le Chiffrement Hybride.**
+
+1. On génère une clé symétrique (AES) aléatoire à la volée.
+2. On chiffre le mot de passe Root avec cette clé AES (très rapide).
+3. On chiffre la clé AES avec la **Clé Publique (RSA)** de l'entreprise.
+4. On stocke le tout en base. Seul le détenteur de la **Clé Privée (RSA)** pourra faire l'opération inverse.
+
+=== Le CryptoService (L'encapsulation de la complexité)
+La cryptographie avec la librairie `OpenSSL` de PHP est verbeuse. En POO, nous allons cacher cette complexité dans un **Service**.
+
+Créez le fichier `src/CryptoService.php` :
+
+[source,php]
+----
+<?php
+namespace App;
+
+class CryptoService
+{
+    private string $clePubliqueRsa;
+
+    public function __construct()
+    {
+        // En réalité, on charge le fichier .pem de l'entreprise
+        $this->clePubliqueRsa = file_get_contents('../config/public_key.pem');
+    }
+
+    /**
+     * Chiffre une donnée avec une méthode hybride (AES + RSA)
+     * Retourne une chaîne encodée en Base64 contenant l'enveloppe
+     */
+    public function chiffrerSensible(string $donneeClaire): string
+    {
+        // 1. Générer une clé AES aléatoire de 32 octets
+        $cleAes = openssl_random_pseudo_bytes(32);
+
+        // 2. Générer un vecteur d'initialisation (IV) pour AES
+        $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length('aes-256-cbc'));
+
+        // 3. Chiffrer la donnée avec AES-256
+        $donneeChiffree = openssl_encrypt($donneeClaire, 'aes-256-cbc', $cleAes, 0, $iv);
+
+        // 4. Chiffrer la clé AES avec la Clé Publique RSA
+        openssl_public_encrypt($cleAes, $cleAesChiffreeRsa, $this->clePubliqueRsa);
+
+        // 5. On assemble le tout (IV + Clé AES Chiffrée + Donnée Chiffrée) et on encode en Base64 pour le stockage texte
+        $enveloppe = [
+            'iv' => base64_encode($iv),
+            'key' => base64_encode($cleAesChiffreeRsa),
+            'data' => $donneeChiffree
+        ];
+
+        return json_encode($enveloppe);
+    }
+}
+----
+*Note : Pour ce TP, je vous fournis les clés RSA (public_key.pem et private_key.pem) à placer dans un dossier `config/` à la racine.*
+
+== 4. Exercices Pratiques (TP)
+
+À vous d'intégrer ces concepts de cybersécurité dans notre architecture MVC.
+
+=== Préparation de la Base de Données
+Exécutez ce SQL pour préparer le TP :
+[source,sql]
+----
+-- Ajout de la table Admin
+CREATE TABLE administrateurs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL
+);
+
+-- Création d'un compte de test (Mdp: 'BtsSlam2026!')
+INSERT INTO administrateurs (email, password_hash)
+VALUES ('admin@mininagios.local', '$2y$12$Y3dv7apTWrCiGMRwAakyhuXsTNERYXPJBR4vdB8rwlLI4Pc1hUKg2');
+
+-- Ajout de la colonne pour le chiffrement hybride
+ALTER TABLE serveurs ADD COLUMN root_password_hybride TEXT NULL;
+----
+
+=== Exercice 1 : Le Formulaire de Login (Authentification)
+1. Créez une vue `public/login.php` avec un formulaire (Email et Mot de passe).
+2. Créez le contrôleur `public/traitement_login.php`.
+* Il doit chercher l'email dans la table `administrateurs`.
+* Utiliser `password_verify()` avec le mot de passe saisi.
+* Si c'est OK : `session_start(); $_SESSION['admin_id'] = $user['id'];` puis redirection vers `dashboard.php`.
+* Si c'est KO : Redirection vers `login.php?erreur=1`.
+
+=== Exercice 2 : Le Gardien du Temple (Middleware de Sécurité)
+Nous voulons protéger l'accès au tableau de bord.
+
+1. Créez une classe statique `src/Securite.php`.
+2. Ajoutez-y une méthode `public static function verifierConnexion(): void`.
+* Cette méthode doit démarrer la session (si ce n'est pas fait).
+* Vérifier si `$_SESSION['admin_id']` existe.
+* Si ce n'est pas le cas, elle fait un `header("Location: login.php"); exit();`.
+3. Allez tout en haut de votre fichier `public/dashboard.php` et appelez `App\Securite::verifierConnexion();`.
+4. Testez : essayez d'accéder au dashboard sans être connecté. Vous devez être rejeté !
+
+=== Exercice 3 : Intégration du Chiffrement Hybride (Secret Défense)
+Lors de l'ajout d'un serveur, nous devons désormais stocker son mot de passe Root de manière ultra-sécurisée.
+
+1. Dans `public/ajouter_machine.php`, ajoutez un champ de type `password` nommé `root_pass`.
+2. Modifiez la classe `Serveur` pour ajouter l'attribut `$rootPasswordHybride` et son Getter.
+3. Dans le contrôleur `public/traitement.php` :
+* Instanciez le `$crypto = new CryptoService();`
+* Chiffrez le mot de passe saisi : `$mdpChiffre = $crypto->chiffrerSensible($_POST['root_pass']);`
+* Donnez ce mot de passe chiffré à l'objet `Serveur`.
+4. Modifiez `ServeurRepository::sauvegarder()` pour qu'il insère `root_password_hybride` en base de données.
+5. Regardez votre base de données avec HeidiSQL : observez le charabia indéchiffrable ! Mission accomplie.

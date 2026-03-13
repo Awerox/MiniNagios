@@ -1,15 +1,15 @@
 <?php
-namespace MiniNagios\tests;
+namespace Tests;
 
-use App\Service;
 use PHPUnit\Framework\TestCase;
+use App\Service;
 
 class ServiceTest extends TestCase
 {
     public function testCreationService()
     {
         // 1. Arrange (Préparation)
-        $service = new Service("Apache", 80);
+        $service = new Service("Apache", 80, false);
 
         // 2. Act (Action) & 3. Assert (Vérification)
         // Vérifions que le service est éteint par défaut
@@ -18,7 +18,7 @@ class ServiceTest extends TestCase
 
     public function testDemarrageEtArret()
     {
-        $service = new Service("MySQL", 3306);
+        $service = new Service("MySQL", 3306, false);
 
         // On démarre
         $service->demarrer();
@@ -36,6 +36,6 @@ class ServiceTest extends TestCase
         $this->expectExceptionMessage("invalide");
 
         // Cette ligne doit provoquer l'exception
-        new Service("BadService", 999999);
+        new Service("BadService", 999999, false);
     }
 }

@@ -1,0 +1,86 @@
+= 🚀 Cheat-Sheet : Survie en Déploiement & Cybersécurité
+:author: Mémento BTS SLAM
+:icons: font
+:source-highlighter: highlightjs
+
+== 📦 Composer & Autoloading (Gestion des dépendances)
+
+Composer est l'outil indispensable en PHP moderne pour installer des bibliothèques et gérer l'inclusion automatique des classes (Autoload).
+
+[cols="1,2"]
+|===
+| Commande | Action
+
+| `composer init`
+| Initialise un nouveau projet et crée le fichier `composer.json`.
+
+| `composer require vlucas/phpdotenv`
+| Télécharge une bibliothèque (ex: phpdotenv) et la place dans le dossier `/vendor/`.
+
+| `composer require --dev phpunit/phpunit`
+| Installe un outil **uniquement pour le développement local** (ne sera pas en production).
+
+| `composer dump-autoload`
+| Met à jour l'autoloader après la création de nouvelles classes ou de nouveaux dossiers.
+
+| `composer install --no-dev --optimize-autoloader`
+| **LA commande de production (Serveur) :** Installe les dépendances requises, exclut les outils de dev (PHPUnit), et optimise la vitesse de chargement.
+|===
+
+== 🐙 Git & Versionnement
+
+Git permet de sauvegarder l'historique de votre code. Règle d'or : on ne versionne **jamais** les mots de passe ni le dossier `/vendor/`.
+
+[cols="1,2"]
+|===
+| Commande / Fichier | Action
+
+| Le fichier `.gitignore`
+| Fichier texte à la racine. Doit absolument contenir `/vendor/` et `.env`.
+
+| `git add .`
+| Prépare tous les fichiers modifiés pour la sauvegarde.
+
+| `git commit -m "Ajout de l'API"`
+| Valide la sauvegarde avec un message clair.
+
+| `git push`
+| Envoie le code vers le serveur distant (GitHub, GitLab, Clever Cloud...).
+|===
+
+== 🔐 Cybersécurité & Environnement (OWASP 2025)
+
+Protégez votre application contre les failles du Top 10 OWASP, notamment **A04:2025 (Cryptographic Failures)**.
+
+* **La Règle du `.env` :** Aucun mot de passe (BDD, Clé API) ne doit être écrit en dur dans le code PHP.
+* **Le fichier local :** Créez un fichier `.env` sur votre PC avec vos accès de développement (ex: `root`).
+* **En PHP :** Utilisez `$_ENV['DB_HOST']` pour récupérer les valeurs.
+* **Le Bootstrap sécurisé :**
+[source,php]
+----
+require_once __DIR__ . '/../vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
+$dotenv->safeLoad(); // Ne plante pas si le .env n'existe pas physiquement (ex: en prod)
+----
+
+== 📡 API REST & JSON
+
+Une API REST permet à votre serveur de distribuer des données brutes à d'autres applications (Mobile, JS).
+
+* **Le formatage (PHP) :**
+[source,php]
+----
+header("Content-Type: application/json; charset=UTF-8");
+echo json_encode($donnees_tableau);
+----
+
+* **L'authentification (Stateless) :** Une API ne gère pas les sessions (`$_SESSION`). On utilise une clé secrète dans les en-têtes HTTP (ex: `X-API-KEY`).
+* **Le code de statut de sécurité :** Si la clé est fausse, renvoyez `http_response_code(401);` et stoppez l'exécution (`exit();`).
+
+== 🌐 Déploiement AlwaysData (Check-list)
+
+1. **La Base de données :** Exportez la *structure ET les données* depuis votre PC, importez le `.sql` sur le phpMyAdmin d'AlwaysData.
+2. **Le FTP :** Envoyez tout le projet dans le dossier `/www/votre_dossier/` **SAUF** `/vendor/` et `.env`.
+3. **Le Répertoire Racine :** Dans l'interface *Web -> Sites*, vérifiez que le chemin pointe bien vers le sous-dossier `public/` pour bloquer l'accès au code source (Sécurité MVC).
+4. **Les Variables d'Environnement :** Allez dans *Environnement -> Variables d'environnement* et collez vos vrais identifiants de production. Redémarrez le site web.
+5. **Le SSH (Console) :** Ouvrez le terminal web AlwaysData, faites `cd www/votre_dossier/`, et lancez `composer install --no-dev`.

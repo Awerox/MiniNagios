@@ -4,12 +4,13 @@ namespace App;
 class Serveur extends EquipementReseau
 {
     private string $os;
-    private bool $maintenance = false;
+
     // NOUVEAU : Un tableau pour stocker les objets "Service"
+    private bool $maintenance = false;
+
+
+
     private array $services = [];
-
-
-
     public function __construct(string $hostname, string $ip, string $os)
     {
 
@@ -32,44 +33,50 @@ class Serveur extends EquipementReseau
         $this->services[] = $service;
     }
 
+    public function verifierSante():string {
+
+        foreach($this->services as $service) {
+            if (! $service->estDemarre() && $service->estCritique()) {
+                return "<span style='color:red'>DANGER </span>";
+            }
+        }
+        return "<span style='color:green'>OK </span>";
+    }
+
+
     public function afficherStatut(): string
     {
         // 1. On affiche les infos de base du serveur
         $html = parent::afficherStatut() . " | OS : $this->os <br>";
 
         // 2. On boucle sur les services pour afficher leur état
-        if ($this->enMaintenance()) {
-            $html .= "Statut : En cours de maintenance 🚧";
+        if ($this->maintenance) {
+            $html.="Le serveur est maintenant en maintenance 🚧";
         }
-        else if (empty($this->services)) {
-        $html .= "<em>Aucun service installé.</em>";
-    }
-        else {
+        if (empty($this->services)) {
+            $html .= "<em>Aucun service installé.</em>";
+        } else {
             $html .= "<strong>Services : </strong>";
             foreach ($this->services as $service) {
                 // On délègue l'affichage à la classe Service (Chacun son métier)
                 $html .= $service->getStatut() . " ";
-
-
-                return "Statut : Opérationnel";
             }
         }
-
 
         return $html;
     }
 
-    public function enMaintenance(): bool
-    {
+    public function enMaintenance(): bool {
         return $this->maintenance;
     }
 
-    public function activerMaintenance(): void
-    {
+    public function recupereServices(){
+        return $this->services;
+    }
+
+    public function activerMaintenance(): void {
         $this->maintenance = true;
     }
 
-
-
-
+    public function getOs(): string { return $this->os; }
 }

@@ -1,5 +1,4 @@
 <?php
-
 require "../vendor/autoload.php";
 
 use App\Service;
@@ -13,15 +12,17 @@ $serviceApache->demarrer();
 $serveurWeb->ajouterService($serviceApache);
 $serveurWeb->ajouterService($serviceSSH);
 
+echo "Vérification statut: <BR>" ;
 echo $serveurWeb->afficherStatut();
+echo "<BR> Vérification Santé: <BR>" ;
+echo $serveurWeb->verifierSante() ;
+
+
+$serviceApache->arreter();
+echo "Vérification statut: <BR>" ;
+echo $serveurWeb->afficherStatut();
+echo "<BR> Vérification Santé: <BR>" ;
+
+echo $serveurWeb->verifierSante() ;
+
 echo "<BR>" ;
-
-$serveurBDD = new Serveur("SRV-DB-01", "10.0.210.1", "Windows Server 2022");
-
-$serviceMySQL = new Service("MySQL", 3306, true);
-$serviceMySQL->demarrer();
-$serviceRDP = new Service("RDP", 3389, false);
-
-$serveurBDD->ajouterService($serviceMySQL);
-$serveurBDD->ajouterService($serviceRDP);
-echo $serveurBDD->afficherStatut();

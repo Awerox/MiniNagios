@@ -1,0 +1,292 @@
+= SÉANCE 5 : Persistance des Données (MySQL & PDO)
+:author: Timothée Robert
+:toc: left
+:toc-title: Sommaire
+:icons: font
+:source-highlighter: highlightjs
+:imagesdir: images
+
+== Le problème de l'amnésie (Volatilité)
+
+Jusqu'à présent, notre application Mini-Nagios souffre d'un problème majeur : l'amnésie.
+Lorsque vous remplissez le formulaire pour créer un serveur, l'objet PHP est bien créé en mémoire (RAM).
+
+Mais dès que la page web a fini de charger, le script s'arrête et **tous les objets sont détruits**.
+
+Pour conserver notre infrastructure, nous devons sauvegarder l'état de nos objets dans une base de données (Disque Dur). C'est ce qu'on appelle la **Persistance**.
+
+== La solution : PDO et Cybersécurité
+
+Pour communiquer avec MySQL, PHP propose une extension orientée objet très puissante : **PDO** (PHP Data Objects).
+
+=== Pourquoi PDO et pas mysqli ?
+1. **Agnostique :** PDO peut se connecter à MySQL, PostgreSQL, SQLite, etc. Si l'entreprise change de SGBD, le code PHP ne change presque pas.
+2. **Cybersécurité (Injection SQL) :** PDO intègre nativement les **Requêtes Préparées**. C'est le standard industriel pour empêcher un attaquant de détruire ou voler vos données en insérant du code SQL malveillant dans vos formulaires.
+
+== Préparation de la Base de Données
+
+Avant de coder, préparons notre stockage.
+
+1. Lancez votre serveur MySQL (via Laragon. En stage, dans l'entreprise cela pourrait également être XAMPP ou Docker).
+2. Ouvrez votre outil de gestion (HeidiSQL ici, phpMyAdmin ou DBeaver dans un autre contexte...).
+3. Exécutez le script SQL suivant pour créer la table :
+
+[source,sql]
+----
+CREATE DATABASE IF NOT EXISTS mininagios;
+USE mininagios;
+
+CREATE TABLE IF NOT EXISTS serveurs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    hostname VARCHAR(255) NOT NULL,
+    ip VARCHAR(15) NOT NULL,
+    os VARCHAR(100) NOT NULL,
+    date_creation DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+----
+
+== L'Architecture : Le Design Pattern "Repository"
+
+[IMPORTANT]
+.Règle d'Architecture
+====
+**Il ne faut JAMAIS mettre de requêtes SQL (INSERT, SELECT) directement dans la classe `Serveur`.**
+Le rôle de la classe `Serveur` est de représenter la logique métier, pas de parler à MySQL.
+====
+
+Nous allons utiliser un Design Pattern (un modèle de conception) très courant en entreprise : le **Repository**.
+
+* **Le Serveur** = L'entité (Les données pures).
+* **Le ServeurRepository** = Le gestionnaire (Celui qui s'occupe de sauvegarder ou récupérer les serveurs en base de données).
+
+== Mise en Pratique : Coder la persistance
+
+=== Étape 1 : La classe de Connexion (La prise électrique)
+Nous allons créer une classe utilitaire pour générer notre connexion PDO.
+Créez le fichier `src/Database.php`.
+
+[source,php]
+----
+<?php
+namespace App;
+
+class Database
+{
+    // Méthode statique car on a juste besoin de l'outil de connexion
+    public static function getConnection(): \PDO
+    {
+        $host = '127.0.0.1';
+        $dbname = 'mininagios';
+        $user = 'root'; // Adaptez selon votre configuration locale
+        $pass = '';     // Adaptez selon votre configuration locale
+
+        try {
+            // Le DSN (Data Source Name)
+            $dsn = "mysql:host=$host;dbname=$dbname;charset=utf8mb4";
+
+            // Options de sécurité et de gestion d'erreurs
+            $options = [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION, // Lève des Exceptions en cas d'erreur SQL
+                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC, // Retourne des tableaux associatifs
+            ];
+
+            return new \PDO($dsn, $user, $pass, $options);
+
+        } catch (\PDOException $e) {
+            // Si la BDD est inaccessible, on arrête tout proprement
+            throw new \Exception("ERREUR CRITIQUE : Impossible de se connecter à la base de données.");
+        }
+    }
+}
+----
+
+=== Étape 2 : Le Repository (Le Gestionnaire)
+Créez le fichier `src/ServeurRepository.php`. C'est lui qui contiendra le SQL.
+
+[source,php]
+----
+<?php
+namespace App;
+
+class ServeurRepository
+{
+    private \PDO $pdo;
+
+    // Injection de dépendance : Le repository a besoin de PDO pour fonctionner
+    public function __construct(\PDO $pdo)
+    {
+        $this->pdo = $pdo;
+    }
+
+    /**
+     * Sauvegarde un objet Serveur dans la base de données
+     */
+    public function sauvegarder(Serveur $serveur): void
+    {
+        // 1. Préparation de la requête (CYBERSÉCURITÉ : Les "?" empêchent l'injection SQL)
+        $sql = "INSERT INTO serveurs (hostname, ip, os) VALUES (:hostname, :ip, :os)";
+        $stmt = $this->pdo->prepare($sql);
+
+        // 2. Exécution en remplaçant les "trous" par les vraies valeurs de l'objet
+        // Nous utilisons les getters de l'objet Serveur (Il faudra les créer !)
+        $stmt->execute([
+            'hostname' => $serveur->getHostname(),
+            'ip'       => $serveur->getIp(),
+            'os'       => $serveur->getOs()
+        ]);
+    }
+}
+----
+
+=== Étape 3 : Mettre à jour la classe `Serveur`
+Pour que le Repository puisse lire les données du serveur, l'objet doit accepter de les fournir.
+Ouvrez `src/Serveur.php` et `src/EquipementReseau.php` pour ajouter les **Getters** manquants :
+
+* Dans `EquipementReseau.php` :
+[source,php]
+----
+public function getHostname(): string { return $this->hostname; }
+public function getIp(): string { return $this->ip; }
+----
+
+* Dans `Serveur.php` :
+[source,php]
+----
+public function getOs(): string { return $this->os; }
+----
+
+=== Étape 4 : Brancher le formulaire
+Nous allons ajouter un nouveau fichier qui reçoit les données du formulaire (`public/traitementPersisteServeur.php`) pour qu'il sauvegarde le serveur au lieu de juste l'afficher.
+
+[source,php]
+----
+<?php
+require '../vendor/autoload.php';
+
+use App\Serveur;
+use App\Database;
+use App\ServeurRepository;
+
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+
+    $nom = $_POST['hostname'];
+    $ip  = $_POST['ip'];
+    $os  = $_POST['os'];
+
+    try {
+        // 1. Instanciation de l'objet (Le code va valider l'IP et l'OS tout seul !)
+        $nouveauServeur = new Serveur($nom, $ip, $os);
+
+        // 2. Connexion à la BDD
+        $pdo = Database::getConnection();
+
+        // 3. Création du Repository et Sauvegarde
+        $repo = new ServeurRepository($pdo);
+        $repo->sauvegarder($nouveauServeur);
+
+        // 4. Redirection vers un tableau de bord en cas de succès
+        header("Location: dashboard.php?success=1");
+        exit();
+
+    } catch (Exception $e) {
+        // Affichage de l'erreur (IP invalide, OS interdit, ou BDD plantée)
+        echo "<div style='color:red; border:1px solid red; padding:10px;'>";
+        echo "Erreur : " . $e->getMessage();
+        echo "</div>";
+        echo "<br><a href='ajouter_machine.php'>Retour au formulaire</a>";
+    }
+
+} else {
+    header("Location: ajouter_machine.php");
+}
+----
+
+== Exercices Pratiques (TP)
+
+À vous de jouer pour rendre cette infrastructure pleinement fonctionnelle !
+
+=== Exercice 1 : Le Tableau de Bord (Lecture - SELECT)
+Votre mission est de créer la page `public/dashboard.php` qui va lister tous les serveurs présents dans la base de données.
+
+1. **Dans `ServeurRepository.php` :**
+* Ajoutez une méthode `public function listerTous(): array`.
+* Cette méthode doit exécuter la requête `SELECT * FROM serveurs ORDER BY date_creation DESC`.
+* Elle doit utiliser `$stmt->fetchAll()` pour récupérer les résultats.
+* Elle retourne le tableau de résultats.
+
+2. **Dans `public/dashboard.php` :**
+* Connectez-vous à la base via `Database::getConnection()`.
+* Instanciez le `ServeurRepository`.
+* Appelez votre méthode `listerTous()`.
+* Utilisez une boucle `foreach` pour générer un tableau HTML (`<table>`) affichant l'ID, le Hostname, l'IP, l'OS et la Date.
+* *Bonus :* Ajoutez un bouton "Ajouter un nouveau serveur" qui ramène au formulaire.
+
+=== Exercice 2 : La Suppression (DELETE) - Introduction à la Cybersécurité
+Nous voulons pouvoir supprimer un serveur depuis le tableau de bord.
+
+1. **Dans `dashboard.php` :**
+* Ajoutez une colonne "Actions" dans votre tableau HTML.
+* Dans cette colonne, ajoutez un lien hypertexte : `<a href="supprimer.php?id=... ">Supprimer</a>` en remplaçant `...` par l'ID réel du serveur.
+
+2. **Dans `ServeurRepository.php` :**
+* Ajoutez une méthode `public function supprimerParId(int $id): void`.
+* Écrivez la requête préparée : `DELETE FROM serveurs WHERE id = :id`.
+* Exécutez la requête en passant l'ID.
+
+3. **Création de `public/supprimer.php` :**
+* Ce fichier doit vérifier si `$_GET['id']` existe.
+* Si oui, instanciez le repository et appelez `supprimerParId()`.
+* Redirigez ensuite l'utilisateur vers `dashboard.php`.
+
+*(Attention : En cybersécurité réelle, on utiliserait un formulaire POST avec un jeton CSRF pour les suppressions, mais nous commençons ici par la logique de base du Repository).*
+
+=== Exercice 3 : Le flux complet de A à Z (Le Routeur)
+
+**Objectif :** C'est l'exercice de synthèse par excellence. Vous allez devoir traverser toutes les couches de l'application (Architecture en couches) sans code fourni. Vous allez répéter la logique vue pour le Serveur, mais en l'appliquant au `Routeur`.
+
+Voici votre cahier des charges :
+
+**1. La Couche Données (SQL)**
+
+* Créez une nouvelle table `routeurs` dans votre base `mininagios`.
+* Colonnes nécessaires : `id` (INT, Auto-Increment, Primary Key), `hostname` (VARCHAR), `ip` (VARCHAR), `nb_ports` (INT).
+
+**2. La Couche Métier (Les Getters)**
+
+* Ouvrez votre classe `src/Routeur.php` (créée aux séances précédentes).
+* Assurez-vous qu'elle possède bien la validation de sécurité dans son constructeur (les ports doivent être entre 1 et 128).
+* Ajoutez le getter manquant : `public function getNbPorts(): int` (Les getters pour l'IP et le Hostname sont déjà dans la classe parente `EquipementReseau`).
+
+**3. La Couche Persistance (Le Repository)**
+
+* Créez un fichier `src/RouteurRepository.php`.
+* Écrivez-y la classe `RouteurRepository` qui prend `\PDO` dans son constructeur.
+* Créez la méthode `public function sauvegarder(Routeur $routeur): void`.
+* Rédigez la requête préparée (`INSERT INTO routeurs...`) et exécutez-la en utilisant les getters de l'objet Routeur.
+
+**4. La Couche Présentation (La Vue HTML)**
+
+* Créez un fichier `public/ajouter_routeur.php`.
+* Fabriquez un formulaire HTML en méthode `POST`.
+* Les champs (attribut `name`) : `hostname`, `ip`, `ports` (de type `number`).
+* L'action du formulaire doit pointer vers `traitement_routeur.php`.
+
+**5. La Couche Contrôleur (Le Traitement POST)**
+
+* Créez le fichier `public/traitement_routeur.php`.
+* Vérifiez que la requête est bien un POST.
+* Récupérez les données du formulaire.
+* Ouvrez un bloc `try { ... } catch (Exception $e) { ... }`.
+* Dans le `try` :
+1. Instanciez l'objet `Routeur` (La classe va valider les données toute seule !).
+2. Obtenez la connexion PDO via `Database::getConnection()`.
+3. Instanciez `RouteurRepository` et appelez `sauvegarder()`.
+4. Affichez un message de succès vert "Routeur enregistré avec succès !" et un lien de retour.
+* Dans le `catch` :
+* Affichez l'erreur en rouge (ex: si l'utilisateur a rentré 500 ports ou une IP invalide).
+
+[TIP]
+.La force de l'Objet
+====
+Si vous avez bien fait votre travail, le fichier `traitement_routeur.php` ne contient **aucune règle de sécurité** (pas de `if` pour vérifier l'IP ou les ports). C'est le `new Routeur(...)` qui s'en charge. C'est ça, la puissance de la programmation orientée objet !
+====
