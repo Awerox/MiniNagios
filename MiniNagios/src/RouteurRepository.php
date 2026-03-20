@@ -1,7 +1,8 @@
 <?php
+
 namespace App;
 
-class ServeurRepository
+class RouteurRepository
 {
     private \PDO $pdo;
 
@@ -14,22 +15,23 @@ class ServeurRepository
     /**
      * Sauvegarde un objet Serveur dans la base de données
      */
-    public function sauvegarder(Serveur $serveur): void
+    public function sauvegarder(Routeur $routeur): void
     {
         // 1. Préparation de la requête (CYBERSÉCURITÉ : Les "?" empêchent l'injection SQL)
-        $sql = "INSERT INTO serveurs (hostname, ip, os) VALUES (:hostname, :ip, :os)";
+        $sql = "INSERT INTO routeurs (hostname, ip, nbports) VALUES (:hostname, :ip, :nbports)";
         $stmt = $this->pdo->prepare($sql);
 
         // 2. Exécution en remplaçant les "trous" par les vraies valeurs de l'objet
         // Nous utilisons les getters de l'objet Serveur (Il faudra les créer !)
         $stmt->execute([
-            'hostname' => $serveur->getHostname(),
-            'ip'       => $serveur->getIp(),
-            'os'       => $serveur->getOs()
+            'hostname' => $routeur->getHostname(),
+            'ip' => $routeur->getIp(),
+            'nbports' => $routeur->getNbports()
         ]);
     }
 
-    public function listerTous(): array {
+    public function listerTous(): array
+    {
         $stmt = $this->pdo->prepare("SELECT * FROM serveurs");
         $stmt->execute();
         $stmt->setFetchMode(\PDO::FETCH_ASSOC);
@@ -37,13 +39,12 @@ class ServeurRepository
         // print_r($montableau);
         return $montableau;
     }
-    public function supprimerParId(int $id): void{
+
+    public function supprimerParId(int $id): void
+    {
         $sql = "DELETE FROM serveurs WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
-
-        $stmt->execute([
-            'id' => $id
-        ]);
+        $stmt->execute(['id' => $id]);
     }
 
 }

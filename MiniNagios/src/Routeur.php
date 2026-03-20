@@ -20,6 +20,10 @@ class Routeur extends EquipementReseau
         $this->nbPorts = $nbPorts;
     }
 
+    public function getNbPorts(): int {
+        return $this->nbPorts;
+    }
+
     public function afficherStatut(): string
     {
         return parent::afficherStatut() . " | Ports : $this->nbPorts";

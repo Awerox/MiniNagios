@@ -1,8 +1,7 @@
 <?php
-require "../vendor/autoload.php";
-
+require '../vendor/autoload.php';
+use App\ServeurRepository ;
 use App\Database;
-use App\ServeurRepository;
 
 // 1. On récupère l'ID depuis l'URL (ex: supprimer.php?id=5)
 $id = $_GET['id'] ?? null;

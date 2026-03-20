@@ -23,6 +23,10 @@ class Serveur extends EquipementReseau
         $this->os = $os; //
     }
 
+    public function getOs(): string {
+        return $this->os;
+    }
+
     /**
      * C'est ici que la COMPOSITION opère.
      * On injecte un objet "Service" à l'intérieur du Serveur.
@@ -78,5 +82,4 @@ class Serveur extends EquipementReseau
         $this->maintenance = true;
     }
 
-    public function getOs(): string { return $this->os; }
 }
