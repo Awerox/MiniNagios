@@ -4,41 +4,39 @@ namespace App;
 class Serveur extends EquipementReseau
 {
     private string $os;
-
-    // NOUVEAU : Un tableau pour stocker les objets "Service"
     private bool $maintenance = false;
-
-
-
     private array $services = [];
+
+    // NOUVEAU : Stockage du hash hybride
+    private ?string $rootPasswordHybride = null;
+
     public function __construct(string $hostname, string $ip, string $os)
     {
-
-
-        parent::__construct($hostname, $ip); //
+        parent::__construct($hostname, $ip);
         if (!Validator::isOsSupported($os)) {
-            // Si l'IP est pourrie, on lance une Exception (une erreur fatale contrôlée)
             throw new \Exception("ERREUR DE CONFIGURATION OS : L'os '$os' n'est pas valide !");
         }
-        $this->os = $os; //
+        $this->os = $os;
+    }
+
+    // NOUVEAU : Accesseurs pour le mot de passe chiffré
+    public function setRootPasswordHybride(string $password): void {
+        $this->rootPasswordHybride = $password;
+    }
+
+    public function getRootPasswordHybride(): ?string {
+        return $this->rootPasswordHybride;
     }
 
     public function getOs(): string {
         return $this->os;
     }
 
-    /**
-     * C'est ici que la COMPOSITION opère.
-     * On injecte un objet "Service" à l'intérieur du Serveur.
-     */
-    public function ajouterService(Service $service): void
-    {
-        // On ajoute l'objet reçu dans notre tableau
+    public function ajouterService(Service $service): void {
         $this->services[] = $service;
     }
 
-    public function verifierSante():string {
-
+    public function verifierSante(): string {
         foreach($this->services as $service) {
             if (! $service->estDemarre() && $service->estCritique()) {
                 return "<span style='color:red'>DANGER </span>";
@@ -47,39 +45,15 @@ class Serveur extends EquipementReseau
         return "<span style='color:green'>OK </span>";
     }
 
-
-    public function afficherStatut(): string
-    {
-        // 1. On affiche les infos de base du serveur
+    public function afficherStatut(): string {
         $html = parent::afficherStatut() . " | OS : $this->os <br>";
-
-        // 2. On boucle sur les services pour afficher leur état
         if ($this->maintenance) {
-            $html.="Le serveur est maintenant en maintenance 🚧";
+            $html .= "Le serveur est maintenant en maintenance 🚧";
         }
-        if (empty($this->services)) {
-            $html .= "<em>Aucun service installé.</em>";
-        } else {
-            $html .= "<strong>Services : </strong>";
-            foreach ($this->services as $service) {
-                // On délègue l'affichage à la classe Service (Chacun son métier)
-                $html .= $service->getStatut() . " ";
-            }
-        }
-
         return $html;
-    }
-
-    public function enMaintenance(): bool {
-        return $this->maintenance;
-    }
-
-    public function recupereServices(){
-        return $this->services;
     }
 
     public function activerMaintenance(): void {
         $this->maintenance = true;
     }
-
 }
