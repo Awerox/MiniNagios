@@ -5,27 +5,28 @@ class ServeurRepository
 {
     private \PDO $pdo;
 
-    // Injection de dépendance : Le repository a besoin de PDO pour fonctionner
     public function __construct(\PDO $pdo)
     {
         $this->pdo = $pdo;
     }
 
     /**
-     * Sauvegarde un objet Serveur dans la base de données
+     * Sauvegarde un objet Serveur en base de données
      */
     public function sauvegarder(Serveur $serveur): void
     {
-        // 1. Préparation de la requête (CYBERSÉCURITÉ : Les "?" empêchent l'injection SQL)
-        $sql = "INSERT INTO serveurs (hostname, ip, os) VALUES (:hostname, :ip, :os)";
+        // AJOUT de root_password_hybride dans la requête SQL
+        $sql = "INSERT INTO serveurs (hostname, ip, os, root_password_hybride) 
+                VALUES (:hostname, :ip, :os, :root_pass)";
+
         $stmt = $this->pdo->prepare($sql);
 
-        // 2. Exécution en remplaçant les "trous" par les vraies valeurs de l'objet
-        // Nous utilisons les getters de l'objet Serveur (Il faudra les créer !)
+        // Exécution avec les données de l'objet Serveur
         $stmt->execute([
-            'hostname' => $serveur->getHostname(),
-            'ip'       => $serveur->getIp(),
-            'os'       => $serveur->getOs()
+            'hostname'  => $serveur->getHostname(),
+            'ip'        => $serveur->getIp(),
+            'os'        => $serveur->getOs(),
+            'root_pass' => $serveur->getRootPasswordHybride() // Récupère le "charabia" chiffré
         ]);
     }
 
@@ -33,17 +34,12 @@ class ServeurRepository
         $stmt = $this->pdo->prepare("SELECT * FROM serveurs");
         $stmt->execute();
         $stmt->setFetchMode(\PDO::FETCH_ASSOC);
-        $montableau = $stmt->fetchAll();
-        // print_r($montableau);
-        return $montableau;
+        return $stmt->fetchAll();
     }
-    public function supprimerParId(int $id): void{
+
+    public function supprimerParId(int $id): void {
         $sql = "DELETE FROM serveurs WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
-
-        $stmt->execute([
-            'id' => $id
-        ]);
+        $stmt->execute(['id' => $id]);
     }
-
 }

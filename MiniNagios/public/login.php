@@ -204,7 +204,7 @@ $erreur = isset($_GET['erreur']) || isset($_GET['error']);
 
     <p class="footer-text">
         &copy; 2026 MiniNagios<br>
-        <span style="font-size: 0.7rem; opacity: 0.5;">Alex Xu</span>
+        <span style="font-size: 0.7rem; opacity: 0.5;">BTS SIO SLAM : BtsSlam2026!</span>
     </p>
 </div>
 

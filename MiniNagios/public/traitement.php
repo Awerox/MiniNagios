@@ -21,18 +21,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $nouveauServeur = new Serveur($nom, $ip, $os);
 
         // 2. Chiffrement Sensible (Hybride)
+        // INSTANCE de CryptoService
         $crypto = new CryptoService();
+
+        // CHIFFREMENT du mot de passe saisi
         $mdpChiffre = $crypto->chiffrerSensible($pass);
 
-        // 3. On donne le mot de passe chiffré à l'objet
+        // 3. Attribution du mot de passe chiffré à l'objet Serveur
         $nouveauServeur->setRootPasswordHybride($mdpChiffre);
 
-        // 4. Persistance en base de données
+        // 4. Persistance en base de données via le Repository
         $pdo = Database::getConnection();
         $repo = new ServeurRepository($pdo);
         $repo->sauvegarder($nouveauServeur);
 
-        // Redirection vers le dashboard
+        // Redirection vers le dashboard avec message de succès
         header("Location: dashboard.php?success=1");
         exit();
 
